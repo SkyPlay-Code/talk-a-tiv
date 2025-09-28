@@ -79,5 +79,18 @@ const allUsers = asyncHandler(async (req, res) => {
     res.send(users);
 });
 
-// Update your module.exports to include the new function
-module.exports = { registerUser, authUser, allUsers };
+// @desc    Get user by ID
+// @route   GET /api/user/:id
+const getUserById = asyncHandler(async (req, res) => {
+    const user = await User.findById(req.params.id).select('-password'); // Exclude password from the result
+
+    if (user) {
+        res.json(user);
+    } else {
+        res.status(404);
+        throw new Error('User not found');
+    }
+});
+
+// NOW, update your module.exports to include the new function
+module.exports = { registerUser, authUser, allUsers, getUserById };

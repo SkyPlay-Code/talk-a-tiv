@@ -1,6 +1,7 @@
 const asyncHandler = require('express-async-handler');
 const Chat = require('../models/chatModel');
 const User = require('../models/userModel');
+const Message = require('../models/messageModel');
 
 // @desc    Create or fetch one-on-one chat
 // @route   POST /api/chat
@@ -174,4 +175,56 @@ const removeFromGroup = asyncHandler(async (req, res) => {
     }
 });
 
-module.exports = { accessChat, fetchChats, createGroupChat, renameGroup, addToGroup, removeFromGroup };
+// @desc    Mark messages as read in a chat
+// @route   PUT /api/chat/:chatId/read
+const markMessagesAsRead = asyncHandler(async (req, res) => {
+    try {
+        // Update all messages in the chat that are not yet read by the user
+        await Message.updateMany(
+            { chat: req.params.chatId, readBy: { $ne: req.user._id } },
+            { $addToSet: { readBy: req.user._id } } // $addToSet ensures no duplicate user IDs
+        );
+
+        // We can emit a socket event here later if needed, but for now, this is enough
+        res.status(200).json({ message: "Messages marked as read" });
+    } catch (error) {
+        res.status(400);
+        throw new Error(error.message);
+    }
+});
+
+// @desc    Delete a group chat
+// @route   DELETE /api/chat/group/:chatId
+const deleteGroup = asyncHandler(async (req, res) => {
+    const chatId = req.params.chatId;
+
+    try {
+        const chat = await Chat.findById(chatId);
+
+        if (!chat) {
+            res.status(404);
+            throw new Error("Chat Not Found");
+        }
+
+        // Check if the user is the admin
+        if (chat.groupAdmin.toString() !== req.user._id.toString()) {
+            res.status(403); // Forbidden
+            throw new Error("Only the group admin can delete the chat");
+        }
+        
+        // First, delete all messages associated with the chat
+        await Message.deleteMany({ chat: chatId });
+
+        // Then, delete the chat itself
+        await Chat.findByIdAndDelete(chatId);
+
+        res.status(200).json({ message: "Group chat and all its messages have been deleted" });
+
+    } catch (error) {
+        res.status(res.statusCode === 403 || res.statusCode === 404 ? res.statusCode : 400);
+        throw new Error(error.message || "Could not delete group chat");
+    }
+});
+
+
+module.exports = { accessChat, fetchChats, createGroupChat, renameGroup, addToGroup, removeFromGroup, markMessagesAsRead, deleteGroup };
